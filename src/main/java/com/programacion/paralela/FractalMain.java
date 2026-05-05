@@ -156,8 +156,8 @@ public class FractalMain {
     }
 
     private void paint() {
-        fpsCounter.update();
-        System.out.println("fps: " + fpsCounter);
+        int currentFps = fpsCounter.update();
+        System.out.println("FPS: " + currentFps);
 
         pixelBuffer.clear();
 
