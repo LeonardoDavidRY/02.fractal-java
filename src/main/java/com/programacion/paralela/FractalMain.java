@@ -4,6 +4,8 @@ import org.lwjgl.*;
 import org.lwjgl.glfw.*;
 import org.lwjgl.opengl.*;
 
+import java.nio.IntBuffer;
+
 import static org.lwjgl.glfw.Callbacks.*;
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
@@ -17,12 +19,20 @@ public class FractalMain {
     private long window;
     private int textureID;
 
+    private IntBuffer pixelBuffer;
+
+
     FractalCpu fractalCpu = new FractalCpu();
-    FPSCounter fpsCounter = new FPSCounter();
+    FractalSimd fractalSimd = new FractalSimd();
+
+    FPSCounter fpsCounter;
+    private int modo = 1;
 
     public FractalMain() {
         fractalCpu = new FractalCpu();
         fpsCounter = new FPSCounter();
+
+        pixelBuffer = BufferUtils.createIntBuffer(FractalParams.WIDTH * FractalParams.HEIGHT);
     }
 
     public void run() {
@@ -54,18 +64,29 @@ public class FractalMain {
             throw new RuntimeException("Failed to create the GLFW window");
 
         glfwSetKeyCallback(window, (window, key, scancode, action, mods) -> {
-            if (key == GLFW_KEY_ESCAPE && action == GLFW_RELEASE)
-                glfwSetWindowShouldClose(window, true);
+                    if (key == GLFW_KEY_ESCAPE && action == GLFW_RELEASE)
+                        glfwSetWindowShouldClose(window, true);
 
-            if (key == GLFW_KEY_UP && action == GLFW_RELEASE) {
-                FractalParams.maxIteraciones += 10;
-            }
+                    if (key == GLFW_KEY_UP && action == GLFW_RELEASE) {
+                        FractalParams.maxIteraciones += 10;
+                    }
 
-            if (key == GLFW_KEY_DOWN && action == GLFW_RELEASE) {
-                FractalParams.maxIteraciones -= 10;
-            }
-            if (FractalParams.maxIteraciones < 0) FractalParams.maxIteraciones = 10;
-        });
+                    if (key == GLFW_KEY_DOWN && action == GLFW_RELEASE) {
+                        FractalParams.maxIteraciones -= 10;
+                    }
+                    if (FractalParams.maxIteraciones < 0) FractalParams.maxIteraciones = 10;
+                    if (key == GLFW_KEY_1 && action == GLFW_RELEASE) {
+                        System.out.println("Modo Java CPU");
+                        modo = 1;
+                    }
+                    if (key == GLFW_KEY_2 && action == GLFW_RELEASE) {
+                        System.out.println("Modo SIMD");
+                        modo = 2;
+                    }
+                }
+
+
+        );
 
         GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
         glfwSetWindowPos(window, (vidmode.width() - FractalParams.WIDTH) / 2,
@@ -126,9 +147,7 @@ public class FractalMain {
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
             paint();
-
             glfwSwapBuffers(window);
-
             glfwPollEvents();
 
 
@@ -137,34 +156,49 @@ public class FractalMain {
     }
 
     private void paint() {
-        int currentFps = fpsCounter.update();
-        System.out.println("FPS: " + currentFps);
-        fractalCpu.julia_serial2(FractalParams.xMin, FractalParams.xMax, FractalParams.yMin, FractalParams.yMax, FractalParams.WIDTH, FractalParams.HEIGHT);
+        fpsCounter.update();
+        System.out.println("fps: " + fpsCounter);
+
+        pixelBuffer.clear();
+
+        if (modo == 1) {
+            fractalCpu.julia_serial2(FractalParams.xMin, FractalParams.xMax, FractalParams.yMin, FractalParams.yMax, FractalParams.WIDTH, FractalParams.HEIGHT);
+            pixelBuffer.put(fractalCpu.pixel_buffer);
+        } else if (modo == 2) {
+            fractalSimd.juliaSimd();
+            pixelBuffer.put(fractalSimd.pixelBuffer.asIntBuffer());
+        }
+
+        pixelBuffer.flip();
+
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, textureID);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8,
                 FractalParams.WIDTH, FractalParams.HEIGHT, 0,
                 GL_RGBA,
                 GL_UNSIGNED_BYTE,
-                fractalCpu.pixel_buffer);
+                pixelBuffer);
 
         glBegin(GL_QUADS);
         {
-            glTexCoord2d(0,0);
+            glTexCoord2d(0, 0);
             glVertex2d(-1, -1);
 
-            glTexCoord2d(0,1);
+            glTexCoord2d(0, 1);
             glVertex2d(-1, 1);
 
-            glTexCoord2d(1,1);
+            glTexCoord2d(1, 1);
             glVertex2d(1, 1);
 
-            glTexCoord2d(1,0);
+            glTexCoord2d(1, 0);
             glVertex2d(1, -1);
 
         }
         glEnd();
     }
+
+    //JNT
+    public native void julia_simd(double xml, double ymin);
 
     public static void main(String[] args) {
         new FractalMain().run();
